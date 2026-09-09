@@ -83,6 +83,10 @@ Finder が開くので、**「デスクトップにアイコンを作る.command
 | **Open Notebook を停止** | コンテナを停止する（ノートやソースはそのまま残ります） |
 | **Open Notebook を更新** | 最新のイメージを取得して入れ替える |
 
+`mac/動作を確認.command` を実行すると、稼働状況の診断レポートを表示し、
+デスクトップに `open-notebook-診断.txt` として保存します。
+うまく動かないときの調査に使ってください（API キーや暗号化キーは含まれません）。
+
 「起動」アイコンは `.env` が無ければ**暗号化キーを自動生成して作成**するので、
 上の手順 1 を飛ばしてこのアイコンから始めても構いません。
 
@@ -282,12 +286,14 @@ open-notebook-ja/
 │   ├── Open Notebook を停止.command
 │   ├── Open Notebook を更新.command
 │   ├── デスクトップにアイコンを作る.command
+│   ├── 動作を確認.command          # 稼働状況の診断レポートを出す
 │   └── _common.sh                # 上記が共通で使う処理
 ├── transformations/
 │   └── README.md                 # 日本語の変換プロンプト集（コピペ用）
 └── docs/
     ├── japanese-search.md        # 日本語検索の検証レポート
-    └── verify-japanese-search.sh # 上記を手元で再現するスクリプト
+    ├── verify-japanese-search.sh # 上記を手元で再現するスクリプト
+    └── diagnose.sh               # 稼働状況の診断（mac/動作を確認 が呼ぶ本体）
 ```
 
 ---
