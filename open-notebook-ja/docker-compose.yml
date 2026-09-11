@@ -1,0 +1,80 @@
+# Open Notebook — 日本語運用向け docker-compose
+#
+# 上流 (lfnovo/open-notebook v1.14.0) の docker-compose.yml をベースに、
+# 日本語で使うために必要な設定を追加したものです。
+# 追加点は「日本語向け」コメントで示しています。
+#
+# 使い方:
+#   cp .env.example .env   # 中身を編集（暗号化キーは必ず変更）
+#   docker compose up -d
+#   ブラウザで http://localhost:8502
+
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:v2
+    # ローカル利用なら root:root のままで動きます。
+    # ネットワークに公開する前に .env で SURREAL_USER / SURREAL_PASSWORD を変更してください。
+    command: ["start", "--log", "info", "--user", "${SURREAL_USER:-root}", "--pass", "${SURREAL_PASSWORD:-root}", "rocksdb:/mydata/mydatabase.db"]
+    user: root  # Linux の bind mount で必要
+    ports:
+      # localhost のみに公開。アプリはコンポーズ内部ネットワークで接続するため、
+      # このポートは Surrealist などでのデバッグ用途だけです。
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./surreal_data:/mydata
+    environment:
+      - SURREAL_EXPERIMENTAL_GRAPHQL=true
+    restart: always
+    pull_policy: always
+
+  open_notebook:
+    image: lfnovo/open_notebook:v1-latest
+    ports:
+      - "8502:8502"  # Web UI
+      - "5055:5055"  # REST API
+    environment:
+      # 必須: API キーを DB 内で暗号化するための秘密鍵。.env で必ず変更してください。
+      - OPEN_NOTEBOOK_ENCRYPTION_KEY=${OPEN_NOTEBOOK_ENCRYPTION_KEY:?.env に OPEN_NOTEBOOK_ENCRYPTION_KEY を設定してください}
+
+      # データベース接続
+      - SURREAL_URL=ws://surrealdb:8000/rpc
+      - SURREAL_USER=${SURREAL_USER:-root}
+      - SURREAL_PASSWORD=${SURREAL_PASSWORD:-root}
+      - SURREAL_NAMESPACE=open_notebook
+      - SURREAL_DATABASE=open_notebook
+
+      # ── 日本語向け ①: 日本語で回答させるプロンプト上書き ──────────────
+      # Open Notebook が使う ai-prompter は PROMPTS_PATH → /app/prompts の順で
+      # テンプレートを探し、最初に見つかったものを使います。
+      # ./ja-prompts に置いたファイルだけが上書きされ、残りは上流のまま使われます。
+      - PROMPTS_PATH=/app/ja-prompts
+
+      # ── 日本語向け ②: 日本語 PDF の抽出精度を上げる ─────────────────
+      # Docling はレイアウト解析 + OCR に対応しており、日本語 PDF（特に表や
+      # スキャン文書）で simple 抽出より明確に精度が上がります。
+      # 初回起動時に数 GB をダウンロードするため、最初の起動だけ時間がかかります。
+      # 不要ならこの行をコメントアウトしてください。
+      - OPEN_NOTEBOOK_ENABLE_DOCLING=true
+
+      # ── 日本語向け ③: 埋め込み・要約の同時実行数 ───────────────────
+      # ローカル LLM (Ollama 等) を使う場合は 1 にして順次処理させます。
+      # クラウド API のみなら既定の 5 のままで問題ありません。
+      - OPEN_NOTEBOOK_WORKER_MAX_TASKS=${OPEN_NOTEBOOK_WORKER_MAX_TASKS:-5}
+
+      # 任意: インスタンスにパスワードをかける（未設定なら認証なし）
+      # - OPEN_NOTEBOOK_PASSWORD=${OPEN_NOTEBOOK_PASSWORD}
+
+      # 任意: 大きな音声・動画ファイルを扱う場合に上限を引き上げる（MB, 既定 100）
+      # - OPEN_NOTEBOOK_MAX_UPLOAD_SIZE_MB=500
+
+      # 任意: 自己ホスト TTS など遅いプロバイダ向けのタイムアウト（秒, 既定 300）
+      # - ESPERANTO_TTS_TIMEOUT=600
+    volumes:
+      - ./notebook_data:/app/data
+      # ── 日本語向け ①のマウント ──
+      # 読み取り専用でマウント。中身は ja-prompts/ を参照してください。
+      - ./ja-prompts:/app/ja-prompts:ro
+    depends_on:
+      - surrealdb
+    restart: always
+    pull_policy: always

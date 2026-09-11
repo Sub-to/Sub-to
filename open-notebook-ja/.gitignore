@@ -1,0 +1,4 @@
+# docker compose が生成する実データ・秘密情報
+.env
+surreal_data/
+notebook_data/
