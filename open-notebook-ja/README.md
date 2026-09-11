@@ -110,6 +110,26 @@ Finder が開くので、**「デスクトップにアイコンを作る.command
 
 ---
 
+### すでに Open Notebook を入れている場合（作り直し不要）
+
+公式の手順などで先に導入していて、すでにノートがある場合は、
+**日本語設定だけを後付け**できます。作り直す必要はありません。
+
+```bash
+./apply-japanese.sh
+```
+
+稼働中の Open Notebook を自動で探し、そこに日本語設定を適用します
+（見つからない場合は `./apply-japanese.sh /path/to/open-notebook` のように指定）。
+
+元の `docker-compose.yml` には**一切手を加えません**。
+Docker Compose が自動で読み込む `docker-compose.override.yml` を追加するだけです。
+適用後に `docker compose up -d` で反映してください。ノート・ソース・API キーはそのまま残ります。
+
+やめたいときは `./apply-japanese.sh --undo` で完全に元に戻ります。
+
+---
+
 ## 3. 画面を日本語にする
 
 ブラウザの言語が日本語なら**自動で日本語表示**になります
@@ -337,6 +357,7 @@ NO_PROXY=localhost,127.0.0.1,host.docker.internal,surrealdb,.local
 open-notebook-ja/
 ├── README.md                     # このファイル
 ├── docker-compose.yml            # 日本語運用向けの Compose 定義
+├── apply-japanese.sh             # 既存の導入先に日本語設定だけを後付けする
 ├── .env.example                  # 環境変数テンプレート（日本語コメント付き）
 ├── ja-prompts/                   # 日本語で回答させるプロンプト上書き
 │   ├── chat/system.jinja
