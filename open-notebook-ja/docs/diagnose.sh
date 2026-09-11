@@ -29,13 +29,27 @@ API=http://localhost:5055
 UI=http://localhost:8502
 PW="${OPEN_NOTEBOOK_PASSWORD:-}"
 [ -z "$PW" ] && [ -f .env ] && PW="$(grep -E '^OPEN_NOTEBOOK_PASSWORD=' .env 2>/dev/null | cut -d= -f2-)"
-AUTH=(); [ -n "$PW" ] && AUTH=(-H "Authorization: Bearer $PW")
+
+# 認証ヘッダの付け外し。配列は使わない
+# （macOS 標準の bash 3.2 では set -u と空配列の組み合わせがエラーになるため）
+cget() {  # $1=URL, 残りは curl の追加引数
+  local url="$1"; shift
+  if [ -n "$PW" ]; then
+    curl -s --max-time 10 -H "Authorization: Bearer $PW" "$@" "$url" 2>/dev/null
+  else
+    curl -s --max-time 10 "$@" "$url" 2>/dev/null
+  fi
+}
 
 # コンテナ内でコマンドを実行する（compose プロジェクトに依存しない）
-inc() { [ -n "$CN" ] && docker exec -T "$CN" "$@" 2>/dev/null; }
+# 注意: docker exec に -T は存在しない（compose exec 専用のフラグ）
+inc() {
+  [ -n "$CN" ] || return 1
+  docker exec "$CN" "$@" 2>/dev/null
+}
 
 hr() { printf '\n--- %s ---\n' "$1"; }
-api() { curl -s --max-time 10 "${AUTH[@]}" "$API$1" 2>/dev/null; }
+api() { cget "$API$1"; }
 jq_or_raw() { python3 -c "
 import json,sys
 raw=sys.stdin.read().strip()
@@ -68,7 +82,7 @@ docker ps --format '  {{.Names}}  {{.Image}}' 2>&1 | grep -i -E 'open.?notebook|
 hr "3. Web UI / API の応答"
 show_http() {  # $1=ラベル $2=URL
   local code
-  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${AUTH[@]}" "$2" 2>/dev/null)
+  code=$(cget "$2" -o /dev/null -w '%{http_code}')
   case "$code" in
     200) echo "  $1: 正常 (200)" ;;
     000|"") echo "  $1: 応答なし（まだ起動中か、停止しています）" ;;
@@ -80,6 +94,10 @@ show_http "Web UI (8502)" "$UI"
 show_http "REST API (5055)" "$API/api/models"
 
 hr "4. 日本語プロンプト上書きが効いているか【重要】"
+if ! inc true >/dev/null 2>&1; then
+  echo "  ✗ コンテナ内でコマンドを実行できません（対象: ${CN:-なし}）"
+  echo "    以降のコンテナ内チェックは結果が出ません。"
+fi
 env_val=$(inc printenv PROMPTS_PATH 2>/dev/null | tr -d '\r')
 echo "  PROMPTS_PATH = ${env_val:-（未設定）}"
 echo "  マウントされているファイル:"
