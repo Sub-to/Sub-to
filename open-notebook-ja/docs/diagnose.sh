@@ -107,3 +107,73 @@ echo "==============================================="
 echo "  ここまでをコピーして貼り付けてください"
 echo "  （APIキー・暗号化キーは含まれていません）"
 echo "==============================================="
+
+# ======================================================================
+#  AI プロバイダ接続の診断
+#  「Could not connect to the AI provider」が出たときはここを見ます
+# ======================================================================
+
+hr "11. 登録済みプロバイダと接続先URL（APIキーは出力されません）"
+api /api/credentials | python3 -c "
+import json,sys
+raw=sys.stdin.read().strip()
+if not raw: print('  (応答なし)'); sys.exit()
+try: d=json.loads(raw)
+except Exception: print('  '+raw[:300]); sys.exit()
+items = d if isinstance(d,list) else d.get('items',[])
+if not items: print('  (プロバイダが1つも登録されていません)'); sys.exit()
+warn=[]
+for c in items:
+    if not isinstance(c,dict): continue
+    urls = [c.get(k) for k in ('base_url','endpoint','endpoint_llm','endpoint_embedding','endpoint_tts','endpoint_stt') if c.get(k)]
+    u = ', '.join(urls) if urls else '(既定のURL)'
+    print(f\"  {c.get('provider','?')}  [{','.join(c.get('modalities',[]))}]  → {u}\")
+    for x in urls:
+        if 'localhost' in x or '127.0.0.1' in x:
+            warn.append((c.get('provider','?'), x))
+if warn:
+    print()
+    print('  ★ 原因の可能性が高い設定が見つかりました:')
+    for p,x in warn:
+        print(f'     {p} の接続先が {x} になっています。')
+    print('     Open Notebook は Docker コンテナの中で動いているため、そこでの')
+    print('     localhost は「コンテナ自身」を指し、Mac 本体には届きません。')
+    print('     localhost / 127.0.0.1 を host.docker.internal に書き換えてください。')
+    print('     例: http://localhost:11434 → http://host.docker.internal:11434')
+" 2>&1 | head -30
+
+hr "12. コンテナの中からインターネットに出られるか"
+for host in https://api.openai.com/v1/models https://api.anthropic.com/v1/models; do
+  code=$(docker compose exec -T open_notebook curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$host" 2>/dev/null | tr -d '\r')
+  case "$code" in
+    401|403) echo "  $host → 到達OK (認証エラー $code は正常。ネットワークは通っています)" ;;
+    200) echo "  $host → 到達OK (200)" ;;
+    000|"") echo "  $host → ✗ 到達できません（コンテナから外に出られていません）" ;;
+    *) echo "  $host → HTTP $code" ;;
+  esac
+done
+
+hr "13. コンテナの中から Mac 本体（host.docker.internal）に届くか"
+for port in 11434 1234 11435 8969; do
+  case $port in
+    11434) label="Ollama" ;; 1234) label="LM Studio" ;;
+    11435) label="oMLX" ;; 8969) label="ローカルTTS" ;;
+  esac
+  code=$(docker compose exec -T open_notebook curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://host.docker.internal:$port" 2>/dev/null | tr -d '\r')
+  if [ "$code" = "000" ] || [ -z "$code" ]; then
+    echo "  :$port ($label) → 応答なし（そのソフトを使っていなければ正常です）"
+  else
+    echo "  :$port ($label) → 応答あり (HTTP $code) ★この場合 host.docker.internal を使ってください"
+  fi
+done
+
+hr "14. プロキシ設定（社内ネットワークなどで問題になります）"
+for v in HTTP_PROXY HTTPS_PROXY NO_PROXY; do
+  val=$(docker compose exec -T open_notebook printenv "$v" 2>/dev/null | tr -d '\r')
+  echo "  $v = ${val:-（未設定）}"
+done
+
+hr "15. 実際に起きたエラーの中身【最重要】"
+echo "  分類できなかった例外の元メッセージがここに出ます:"
+logs=$(docker compose logs --tail=400 open_notebook 2>&1 | grep -iE "unclassified llm error|connecterror|connection refused|nodename|name or service not known|ssl|certificate|proxy" | tail -10)
+if [ -n "$logs" ]; then echo "$logs" | sed 's/^/    /'; else echo "    (該当するログが見つかりません。エラーを再現してから、もう一度実行してください)"; fi

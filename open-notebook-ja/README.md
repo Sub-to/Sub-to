@@ -248,7 +248,68 @@ curl -X PUT http://localhost:5055/api/settings \
 
 ---
 
-## 7. 既知の問題（v1.14.0 時点）
+## 7. 困ったとき
+
+### 「Could not connect to the AI provider」と出る
+
+AI プロバイダの接続先に**ネットワーク的に届いていない**ときのエラーです。
+`AI service error:` という前置きが付くことがありますが、意味は同じです。
+
+原因はほぼこの 3 つです。上から順に疑ってください。
+
+**① 接続先を `localhost` にしている（Ollama / LM Studio などを使う場合）**
+
+いちばん多い原因です。Open Notebook は Docker コンテナの中で動いているため、
+そこでの `localhost` は「コンテナ自身」を指し、**Mac 本体には届きません**。
+
+**モデル → 該当プロバイダの設定**を開き、接続先をこう書き換えてください。
+
+| 変更前 | 変更後 |
+|---|---|
+| `http://localhost:11434` | `http://host.docker.internal:11434`（Ollama） |
+| `http://localhost:1234/v1` | `http://host.docker.internal:1234/v1`（LM Studio） |
+| `http://localhost:11435/v1` | `http://host.docker.internal:11435/v1`（oMLX） |
+
+**② API キーが間違っている / 期限切れ**
+
+キー自体の問題なら本来は「Authentication failed」と出ますが、
+プロバイダによっては接続エラーとして現れることがあります。
+**モデル**ページでキーを登録し直し、接続テストを実行してください。
+
+**③ 社内ネットワークやプロキシの内側にいる**
+
+プロキシ経由でしか外に出られない環境では、`.env` に `HTTP_PROXY` / `HTTPS_PROXY` の
+設定が必要です。その際、**`NO_PROXY` に `surrealdb` と `host.docker.internal` を必ず含めてください。**
+含めないとデータベースへの接続までプロキシを通ってしまい、アプリ自体が起動しなくなります。
+
+```bash
+# .env
+HTTP_PROXY=http://proxy.example.com:8080
+HTTPS_PROXY=http://proxy.example.com:8080
+NO_PROXY=localhost,127.0.0.1,host.docker.internal,surrealdb,.local
+```
+
+### 原因を特定する
+
+診断スクリプトが、上の 3 つを自動で切り分けます。
+
+```bash
+./docs/diagnose.sh
+```
+
+セクション 11〜15 を見てください。
+
+- **11**: 登録済みプロバイダと接続先 URL。`localhost` があれば警告します
+- **12**: コンテナからインターネットに出られるか（出られなければ③）
+- **13**: コンテナから Mac 本体に届くか。応答があるポートは `host.docker.internal` で繋がります
+- **14**: プロキシ設定の状態
+- **15**: **実際に起きた例外の中身**。ここに本当の原因が出ます
+
+エラーを再現した直後に実行すると、15 にログが残っていて確実です。
+
+---
+
+## 8. 既知の問題（v1.14.0 時点）
 
 ### Ask の日本語回答が途中で切れる
 
@@ -270,7 +331,7 @@ curl -X PUT http://localhost:5055/api/settings \
 
 ---
 
-## 8. ファイル構成
+## 9. ファイル構成
 
 ```
 open-notebook-ja/
@@ -298,7 +359,7 @@ open-notebook-ja/
 
 ---
 
-## 9. 複数の PC で使う
+## 10. 複数の PC で使う
 
 このディレクトリを git で持ち運べば、どの PC でも同じ設定で立ち上がります。
 ただし **設定は運ばれますが、データと API キーは運ばれません。**
@@ -360,7 +421,7 @@ OPEN_NOTEBOOK_PASSWORD=好きなパスワード
 
 ---
 
-## 10. 更新のしかた
+## 11. 更新のしかた
 
 ```bash
 docker compose pull
