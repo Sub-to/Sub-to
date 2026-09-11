@@ -5,13 +5,34 @@
 # 使い方:  ./docs/diagnose.sh
 set -u
 
-cd "$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" || exit 1
+# 稼働中の Open Notebook を特定する。
+# このスクリプトがどこに置かれていても、実際に動いているコンテナを調べます。
+CN="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -i 'open.\?notebook' | grep -vi surreal | head -1)"
+
+# 導入先ディレクトリ（compose の設定ファイルの場所）
+PROJECT_DIR="$(docker compose ls --format json 2>/dev/null | python3 -c "
+import json,sys,os
+try: rows=json.load(sys.stdin)
+except Exception: sys.exit()
+for r in rows:
+    for f in str(r.get('ConfigFiles','')).split(','):
+        f=f.strip()
+        if not f: continue
+        try:
+            if 'open_notebook' in open(f, encoding='utf-8').read():
+                print(os.path.dirname(f)); sys.exit()
+        except OSError: pass
+" 2>/dev/null)"
+[ -n "$PROJECT_DIR" ] && cd "$PROJECT_DIR" 2>/dev/null
 
 API=http://localhost:5055
 UI=http://localhost:8502
 PW="${OPEN_NOTEBOOK_PASSWORD:-}"
 [ -z "$PW" ] && [ -f .env ] && PW="$(grep -E '^OPEN_NOTEBOOK_PASSWORD=' .env 2>/dev/null | cut -d= -f2-)"
 AUTH=(); [ -n "$PW" ] && AUTH=(-H "Authorization: Bearer $PW")
+
+# コンテナ内でコマンドを実行する（compose プロジェクトに依存しない）
+inc() { [ -n "$CN" ] && docker exec -T "$CN" "$@" 2>/dev/null; }
 
 hr() { printf '\n--- %s ---\n' "$1"; }
 api() { curl -s --max-time 10 "${AUTH[@]}" "$API$1" 2>/dev/null; }
@@ -37,10 +58,12 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 hr "1. コンテナの状態"
-docker compose ps 2>&1 | head -10
+docker ps --format '  {{.Names}}  {{.Status}}' 2>&1 | grep -i -E 'open.?notebook|surreal' || echo "  起動しているコンテナが見つかりません"
+echo "  → 調査対象: ${CN:-なし}"
+echo "  → 導入先:   ${PROJECT_DIR:-不明}"
 
 hr "2. 使用中のイメージ"
-docker compose images 2>&1 | head -6
+docker ps --format '  {{.Names}}  {{.Image}}' 2>&1 | grep -i -E 'open.?notebook|surreal' || echo "  (取得できません)"
 
 hr "3. Web UI / API の応答"
 show_http() {  # $1=ラベル $2=URL
@@ -57,14 +80,14 @@ show_http "Web UI (8502)" "$UI"
 show_http "REST API (5055)" "$API/api/models"
 
 hr "4. 日本語プロンプト上書きが効いているか【重要】"
-env_val=$(docker compose exec -T open_notebook printenv PROMPTS_PATH 2>/dev/null | tr -d '\r')
+env_val=$(inc printenv PROMPTS_PATH 2>/dev/null | tr -d '\r')
 echo "  PROMPTS_PATH = ${env_val:-（未設定）}"
 echo "  マウントされているファイル:"
-docker compose exec -T open_notebook ls -1 /app/ja-prompts/chat /app/ja-prompts/ask /app/ja-prompts/source_chat 2>&1 | sed 's/^/    /' | head -12
+inc ls -1 /app/ja-prompts/chat /app/ja-prompts/ask /app/ja-prompts/source_chat 2>&1 | sed 's/^/    /' | head -12
 echo "  中身の先頭（日本語の指示が入っていれば成功）:"
-docker compose exec -T open_notebook head -1 /app/ja-prompts/chat/system.jinja 2>&1 | sed 's/^/    /'
+inc head -1 /app/ja-prompts/chat/system.jinja 2>&1 | sed 's/^/    /'
 echo "  ai-prompter が実際にどのファイルを選ぶか:"
-docker compose exec -T open_notebook uv run --no-sync python -c "
+inc uv run --no-sync python -c "
 from ai_prompter import Prompter
 p = Prompter(prompt_template='chat/system')
 print('    探索順:', p.prompt_folders[:2])
@@ -96,7 +119,7 @@ hr "8. 設定（埋め込み・YouTube字幕言語）"
 api /api/settings | jq_or_raw 700
 
 hr "9. 直近のエラーログ"
-errs=$(docker compose logs --tail=200 open_notebook 2>&1 | grep -iE "error|exception|traceback|failed" | tail -8)
+errs=$(docker logs --tail 200 "$CN" 2>&1 | grep -iE "error|exception|traceback|failed" | tail -8)
 if [ -n "$errs" ]; then echo "$errs" | sed 's/^/  /'; else echo "  (エラーなし)"; fi
 
 hr "10. ディスク使用量"
@@ -144,7 +167,7 @@ if warn:
 
 hr "12. コンテナの中からインターネットに出られるか"
 for host in https://api.openai.com/v1/models https://api.anthropic.com/v1/models; do
-  code=$(docker compose exec -T open_notebook curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$host" 2>/dev/null | tr -d '\r')
+  code=$(inc curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$host" 2>/dev/null | tr -d '\r')
   case "$code" in
     401|403) echo "  $host → 到達OK (認証エラー $code は正常。ネットワークは通っています)" ;;
     200) echo "  $host → 到達OK (200)" ;;
@@ -159,7 +182,7 @@ for port in 11434 1234 11435 8969; do
     11434) label="Ollama" ;; 1234) label="LM Studio" ;;
     11435) label="oMLX" ;; 8969) label="ローカルTTS" ;;
   esac
-  code=$(docker compose exec -T open_notebook curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://host.docker.internal:$port" 2>/dev/null | tr -d '\r')
+  code=$(inc curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://host.docker.internal:$port" 2>/dev/null | tr -d '\r')
   if [ "$code" = "000" ] || [ -z "$code" ]; then
     echo "  :$port ($label) → 応答なし（そのソフトを使っていなければ正常です）"
   else
@@ -169,11 +192,11 @@ done
 
 hr "14. プロキシ設定（社内ネットワークなどで問題になります）"
 for v in HTTP_PROXY HTTPS_PROXY NO_PROXY; do
-  val=$(docker compose exec -T open_notebook printenv "$v" 2>/dev/null | tr -d '\r')
+  val=$(inc printenv "$v" 2>/dev/null | tr -d '\r')
   echo "  $v = ${val:-（未設定）}"
 done
 
 hr "15. 実際に起きたエラーの中身【最重要】"
 echo "  分類できなかった例外の元メッセージがここに出ます:"
-logs=$(docker compose logs --tail=400 open_notebook 2>&1 | grep -iE "unclassified llm error|connecterror|connection refused|nodename|name or service not known|ssl|certificate|proxy" | tail -10)
+logs=$(docker logs --tail 400 "$CN" 2>&1 | grep -iE "unclassified llm error|connecterror|connection refused|nodename|name or service not known|ssl|certificate|proxy" | tail -10)
 if [ -n "$logs" ]; then echo "$logs" | sed 's/^/    /'; else echo "    (該当するログが見つかりません。エラーを再現してから、もう一度実行してください)"; fi
