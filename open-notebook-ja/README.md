@@ -65,7 +65,70 @@ docker compose logs -f open_notebook
 
 ---
 
-## 2. デスクトップのアイコンから起動する（macOS）
+## 2. Linux に導入する
+
+Ubuntu などの Linux では、専用のスクリプトが一通りやります。
+
+```bash
+git clone https://github.com/Sub-to/Sub-to.git sub-to-config
+cd sub-to-config
+git checkout claude/open-notebook-japanese-w0pz8u
+cd open-notebook-ja
+./setup-linux.sh --icons
+```
+
+Docker の確認、暗号化キーの生成、起動、起動待ちまで自動でやります。
+`--icons` を付けると、デスクトップとアプリ一覧にアイコンを 4 つ登録します
+（起動 / 停止 / 更新 / 診断）。取り消すのは `./linux/install-icons.sh --remove`。
+
+初回は Docling のダウンロードで 5〜15 分かかります。待ちたくなければ
+`./setup-linux.sh --no-docling` で無効にして導入できます（後から有効に戻せます）。
+
+Docker がまだなら先に入れてください。**Docker Desktop ではなく Docker Engine** で十分です。
+
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER"   # 実行後に一度ログアウト／ログイン
+```
+
+### Linux 固有の注意
+
+**`host.docker.internal` が自動では解決されません。** Mac や Windows の Docker Desktop では
+勝手に効きますが、Linux の Docker Engine では効きません。Ollama や LM Studio をホスト側で
+動かしてコンテナから繋ぐ場合に必要なので、同梱の `docker-compose.yml` には
+以下を入れてあります。Mac/Windows では無害です。
+
+```yaml
+extra_hosts:
+  - "host.docker.internal:host-gateway"
+```
+
+これが無いと、ローカル LLM への接続が `Name or service not known` で失敗します。
+
+**GNOME のデスクトップアイコン**は、初回だけ右クリック →「起動を許可する」が必要な場合が
+あります。アプリ一覧（アクティビティ画面）からならそのまま起動できます。
+
+### NVIDIA GPU がある場合
+
+Open Notebook 自体は GPU を使いませんが、**ローカル LLM を GPU で動かせば実用速度になります。**
+ホスト側に Ollama を入れるのが手軽です。
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+nvidia-smi                      # GPU が見えているか確認
+ollama serve                    # 既定でポート 11434
+ollama pull <モデル名>
+```
+
+Open Notebook 側では、**モデル → API キー**で Ollama を追加し、接続先を
+`http://host.docker.internal:11434` にします（`localhost` ではコンテナ自身を指すので届きません）。
+
+VRAM 16 GB クラスなら、12B〜14B を 4bit 量子化で快適に動かせます。日本語重視なら、
+日本語データで学習されたモデルを選ぶと要約の質が目に見えて変わります。
+
+---
+
+## 3. デスクトップのアイコンから起動する（macOS）
 
 毎回ターミナルを開かずに、ダブルクリックで起動できるようにできます。
 
@@ -130,7 +193,7 @@ Docker Compose が自動で読み込む `docker-compose.override.yml` を追加�
 
 ---
 
-## 3. 画面を日本語にする
+## 4. 画面を日本語にする
 
 ブラウザの言語が日本語なら**自動で日本語表示**になります
 （i18next がブラウザ設定を見て `ja-JP` を選びます）。
@@ -143,7 +206,7 @@ Docker Compose が自動で読み込む `docker-compose.override.yml` を追加�
 
 ---
 
-## 4. AI に日本語で答えさせる
+## 5. AI に日本語で答えさせる
 
 **ここが一番大事です。** Open Notebook の内蔵プロンプトには出力言語の指示が一切ありません。
 そのため英語のソースを読み込むと、日本語で質問しても英語で返ってくることがあります。
@@ -170,7 +233,7 @@ Docker Compose が自動で読み込む `docker-compose.override.yml` を追加�
 
 ---
 
-## 5. モデルの設定
+## 6. モデルの設定
 
 **モデル** ページで、使うプロバイダの API キーを登録し、用途ごとに既定モデル（⭐）を割り当てます。
 環境変数でも API キーを渡せますが上流で非推奨扱いなので、**UI から登録**してください。
@@ -202,7 +265,7 @@ Google、Cohere、Voyage、Mistral など）。
 
 ---
 
-## 6. 日本語運用の勘所
+## 7. 日本語運用の勘所
 
 ### 検索は「ベクトル」を使う
 
@@ -268,7 +331,7 @@ curl -X PUT http://localhost:5055/api/settings \
 
 ---
 
-## 7. 困ったとき
+## 8. 困ったとき
 
 ### 「Could not connect to the AI provider」と出る
 
@@ -329,7 +392,7 @@ NO_PROXY=localhost,127.0.0.1,host.docker.internal,surrealdb,.local
 
 ---
 
-## 8. 既知の問題（v1.14.0 時点）
+## 9. 既知の問題（v1.14.0 時点）
 
 ### Ask の日本語回答が途中で切れる
 
@@ -351,7 +414,7 @@ NO_PROXY=localhost,127.0.0.1,host.docker.internal,surrealdb,.local
 
 ---
 
-## 9. ファイル構成
+## 10. ファイル構成
 
 ```
 open-notebook-ja/
@@ -363,6 +426,10 @@ open-notebook-ja/
 │   ├── chat/system.jinja
 │   ├── source_chat/system.jinja
 │   └── ask/final_answer.jinja
+├── setup-linux.sh                # Linux 用の導入スクリプト
+├── linux/                        # Linux 用のランチャーとアイコン
+│   ├── on.sh                     # 起動/停止/更新/診断の実処理
+│   └── install-icons.sh          # デスクトップとアプリ一覧に登録
 ├── mac/                          # macOS 用のダブルクリック起動アイコン
 │   ├── Open Notebook を起動.command
 │   ├── Open Notebook を停止.command
@@ -380,7 +447,7 @@ open-notebook-ja/
 
 ---
 
-## 10. 複数の PC で使う
+## 11. 複数の PC で使う
 
 このディレクトリを git で持ち運べば、どの PC でも同じ設定で立ち上がります。
 ただし **設定は運ばれますが、データと API キーは運ばれません。**
@@ -442,7 +509,7 @@ OPEN_NOTEBOOK_PASSWORD=好きなパスワード
 
 ---
 
-## 11. 更新のしかた
+## 12. 更新のしかた
 
 ```bash
 docker compose pull

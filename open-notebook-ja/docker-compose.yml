@@ -69,6 +69,13 @@ services:
 
       # 任意: 自己ホスト TTS など遅いプロバイダ向けのタイムアウト（秒, 既定 300）
       # - ESPERANTO_TTS_TIMEOUT=600
+    # ── Linux 向け ──────────────────────────────────────────────
+    # Docker Desktop (Mac/Windows) では host.docker.internal が自動で
+    # 解決されますが、Linux の Docker Engine では解決されません。
+    # Ollama や LM Studio をホスト側で動かす場合に必要になるため、
+    # 明示的に追加しています。Mac/Windows では無害です。
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./notebook_data:/app/data
       # ── 日本語向け ①のマウント ──
