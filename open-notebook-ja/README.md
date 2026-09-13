@@ -151,6 +151,22 @@ sudo systemctl enable --now ollama
 5. 実際に通信して接続テスト
 6. 既定モデルと、新規ソースの自動ベクトル化を設定
 
+**Linux では Ollama の待ち受けアドレスに注意。** 既定では `127.0.0.1` のみで、
+コンテナからは別アドレス（`172.17.0.1` など）で来るため届きません。
+スクリプトが登録前に検出して、次の設定を案内します。
+
+```bash
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+sudo tee /etc/systemd/system/ollama.service.d/override.conf > /dev/null <<'CONF'
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0:11434"
+CONF
+sudo systemctl daemon-reload && sudo systemctl restart ollama
+```
+
+元の `ollama.service` は変更しません。戻すには `override.conf` を削除してください。
+Mac では Docker Desktop が VM 経由で繋ぐため、この問題は起きません。
+
 **埋め込みは多言語対応のものを選んでください。** 既定の `bge-m3` は多言語で
 日本語も扱えます。英語専用のモデル（`nomic-embed-text` v1.5 など）を選ぶと、
 日本語の検索が事実上機能しなくなります。

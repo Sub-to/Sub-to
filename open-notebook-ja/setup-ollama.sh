@@ -75,6 +75,41 @@ curl -sf --max-time 10 "$API/api/models" >/dev/null 2>&1 \
   || die "Open Notebook の API が応答しません（$API）。
     先に ./setup-linux.sh で起動してください。"
 
+# --- 事前確認: コンテナから Ollama に届くか ---------------------------
+# Linux では Ollama が既定で 127.0.0.1 のみを待ち受けるため、
+# ここを確認せずに登録すると接続テストで初めて失敗が分かる。
+CN="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -i 'open.\?notebook' | grep -vi surreal | head -1)"
+if [ -n "$CN" ]; then
+  code="$(docker exec "$CN" curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+          "$CONTAINER_URL/api/tags" 2>/dev/null)"
+  if [ "$code" != "200" ]; then
+    listen="$(ss -tlnp 2>/dev/null | grep 11434 | head -1)"
+    extra=""
+    case "$listen" in
+      *127.0.0.1*) extra="
+    Ollama が 127.0.0.1 だけを待ち受けています（$listen）。
+    コンテナからは別アドレス（172.17.0.1 など）で来るため受け付けられません。" ;;
+    esac
+    die "Open Notebook のコンテナから Ollama に届きません。
+    $CONTAINER_URL/api/tags → ${code:-到達できず}（200 が必要）
+$extra
+    全インターフェースで待ち受けるようにしてください:
+
+      sudo mkdir -p /etc/systemd/system/ollama.service.d
+      sudo tee /etc/systemd/system/ollama.service.d/override.conf > /dev/null <<'CONF'
+      [Service]
+      Environment=\"OLLAMA_HOST=0.0.0.0:11434\"
+      CONF
+      sudo systemctl daemon-reload && sudo systemctl restart ollama
+
+    元の ollama.service は変更しません。戻すには override.conf を削除してください。
+    そのあと、このスクリプトをもう一度実行してください。"
+  fi
+  ok "コンテナから Ollama に届いています"
+else
+  warn "Open Notebook のコンテナが見つかりません。接続確認を飛ばします。"
+fi
+
 LLM="$LLM" EMBED="$EMBED" CONTAINER_URL="$CONTAINER_URL" API="$API" python3 - <<'PY'
 import json, os, urllib.request, urllib.error
 
