@@ -81,14 +81,17 @@ cd ~/sub-to-config/open-notebook-ja
 > すでにクローン済みなら、`cd ~/sub-to-config/open-notebook-ja && git pull` だけで構いません。
 
 **Docker を入れた直後は、自分が `docker` グループに入っていないことがあります。**
-その場合スクリプトが検出して、次の 1 行を案内します。
+その場合はスクリプトが検出し、あなたのユーザー名を埋め込んだ手順を表示します。
 
 ```bash
-sudo usermod -aG docker "$USER" && sg docker -c './setup-linux.sh --icons'
+sudo usermod -aG docker <あなたのユーザー名>   # ← $ は付けません
+newgrp docker                                  # 新しいシェルに切り替わる
+./setup-linux.sh --icons                       # そのシェルで再実行
 ```
 
-`usermod` は今のシェルには反映されないため、`sg` でそのコマンドだけ docker グループ
-権限で実行します。次回以降のために、あとで一度ログアウト／ログインしてください。
+`usermod` はログイン時に読まれるため、実行しただけでは今のシェルに反映されません。
+`newgrp` で切り替えるか、**一度ログアウト／ログイン**すれば反映されます。
+どのみち一度はログインし直しておくのが確実です。
 
 Docker の確認、暗号化キーの生成、起動、起動待ちまで自動でやります。
 `--icons` を付けると、デスクトップとアプリ一覧にアイコンを 4 つ登録します

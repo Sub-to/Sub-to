@@ -47,16 +47,21 @@ if ! docker info >/dev/null 2>&1; then
   fi
 
   if ! id -nG 2>/dev/null | tr ' ' '\n' | grep -qx docker; then
-    die "あなたが docker グループに入っていないため、Docker を操作できません。
-    （サービスは動いています: /var/run/docker.sock は root:docker 所有です）
+    me="$(id -un)"
+    hint="    一度ログアウトしてログインし直してから、もう一度実行してください。"
+    command -v newgrp >/dev/null 2>&1 && hint="    newgrp docker    ← 新しいシェルに切り替わります
+    そのシェルで、もう一度このスクリプトを実行してください。
+    （ログアウト／ログインでも同じです）"
+    die "あなた（$me）が docker グループに入っていないため、Docker を操作できません。
+    サービス自体は動いています（/var/run/docker.sock は root:docker 所有）。
 
-    次の 1 行で、グループ追加と導入を続けて実行できます:
+    1) グループに追加する:
 
-      sudo usermod -aG docker \"\$USER\" && sg docker -c '$0 $*'
+      sudo usermod -aG docker $me
 
-    usermod だけでは今のシェルに反映されません。sg はそのコマンドだけを
-    docker グループ権限で実行します。次回以降のために、あとで一度
-    ログアウト／ログインしておいてください。"
+    2) それを今のセッションに反映させる:
+
+$hint"
   fi
 
   die "Docker デーモンに接続できません。サービスもグループも問題なさそうですが、
