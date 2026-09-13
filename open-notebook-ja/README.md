@@ -124,7 +124,38 @@ extra_hosts:
 **GNOME のデスクトップアイコン**は、初回だけ右クリック →「起動を許可する」が必要な場合が
 あります。アプリ一覧（アクティビティ画面）からならそのまま起動できます。
 
-### NVIDIA GPU がある場合
+### NVIDIA GPU がある場合（Ollama の自動設定）
+
+GPU があるなら、Ollama をホスト側で動かすのが本命です。
+**登録から接続テスト、既定設定までを自動でやるスクリプト**を用意しました。
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh    # まだなら
+sudo systemctl enable --now ollama
+./setup-ollama.sh                                 # 既定: qwen2.5:14b + bge-m3
+```
+
+モデルを指定したいときは `--llm` と `--embed` を使います。
+
+```bash
+./setup-ollama.sh --llm <言語モデル> --embed <埋め込みモデル>
+./setup-ollama.sh --no-pull                       # 取得済みのものを登録するだけ
+```
+
+このスクリプトは次を順にやります。何度実行しても重複登録しません。
+
+1. Ollama の稼働と GPU を確認
+2. モデルを取得
+3. Open Notebook に接続先（`http://host.docker.internal:11434`）を登録
+4. 言語モデルと埋め込みモデルを登録
+5. 実際に通信して接続テスト
+6. 既定モデルと、新規ソースの自動ベクトル化を設定
+
+**埋め込みは多言語対応のものを選んでください。** 既定の `bge-m3` は多言語で
+日本語も扱えます。英語専用のモデル（`nomic-embed-text` v1.5 など）を選ぶと、
+日本語の検索が事実上機能しなくなります。
+
+### 手動で設定する場合
 
 Open Notebook 自体は GPU を使いませんが、**ローカル LLM を GPU で動かせば実用速度になります。**
 ホスト側に Ollama を入れるのが手軽です。
@@ -443,6 +474,7 @@ open-notebook-ja/
 │   ├── source_chat/system.jinja
 │   └── ask/final_answer.jinja
 ├── setup-linux.sh                # Linux 用の導入スクリプト
+├── setup-ollama.sh               # Ollama(GPU) を登録・テスト・既定設定まで自動化
 ├── linux/                        # Linux 用のランチャーとアイコン
 │   ├── on.sh                     # 起動/停止/更新/診断の実処理
 │   └── install-icons.sh          # デスクトップとアプリ一覧に登録
