@@ -70,12 +70,25 @@ docker compose logs -f open_notebook
 Ubuntu などの Linux では、専用のスクリプトが一通りやります。
 
 ```bash
+cd ~                                  # ← すでにクローンの中にいると入れ子になるので、必ず最初に
 git clone https://github.com/Sub-to/Sub-to.git sub-to-config
-cd sub-to-config
+cd ~/sub-to-config
 git checkout claude/open-notebook-japanese-w0pz8u
-cd open-notebook-ja
+cd ~/sub-to-config/open-notebook-ja
 ./setup-linux.sh --icons
 ```
+
+> すでにクローン済みなら、`cd ~/sub-to-config/open-notebook-ja && git pull` だけで構いません。
+
+**Docker を入れた直後は、自分が `docker` グループに入っていないことがあります。**
+その場合スクリプトが検出して、次の 1 行を案内します。
+
+```bash
+sudo usermod -aG docker "$USER" && sg docker -c './setup-linux.sh --icons'
+```
+
+`usermod` は今のシェルには反映されないため、`sg` でそのコマンドだけ docker グループ
+権限で実行します。次回以降のために、あとで一度ログアウト／ログインしてください。
 
 Docker の確認、暗号化キーの生成、起動、起動待ちまで自動でやります。
 `--icons` を付けると、デスクトップとアプリ一覧にアイコンを 4 つ登録します

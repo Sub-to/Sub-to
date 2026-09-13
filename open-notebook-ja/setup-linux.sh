@@ -37,9 +37,33 @@ docker compose version >/dev/null 2>&1 || die "docker compose (v2) が使えま�
     docker-compose-plugin を導入してください。"
 
 if ! docker info >/dev/null 2>&1; then
-  die "Docker デーモンに接続できません。次のどちらかです:
-    ・サービスが止まっている  → sudo systemctl start docker
-    ・権限がない              → sudo usermod -aG docker \"\$USER\" のあと再ログイン"
+  # 原因を具体的に切り分けてから終わる
+  if [ "$(systemctl is-active docker 2>/dev/null)" != "active" ]; then
+    die "Docker サービスが動いていません。次を実行してください:
+
+      sudo systemctl enable --now docker
+
+    そのあと、このスクリプトをもう一度実行してください。"
+  fi
+
+  if ! id -nG 2>/dev/null | tr ' ' '\n' | grep -qx docker; then
+    die "あなたが docker グループに入っていないため、Docker を操作できません。
+    （サービスは動いています: /var/run/docker.sock は root:docker 所有です）
+
+    次の 1 行で、グループ追加と導入を続けて実行できます:
+
+      sudo usermod -aG docker \"\$USER\" && sg docker -c '$0 $*'
+
+    usermod だけでは今のシェルに反映されません。sg はそのコマンドだけを
+    docker グループ権限で実行します。次回以降のために、あとで一度
+    ログアウト／ログインしておいてください。"
+  fi
+
+  die "Docker デーモンに接続できません。サービスもグループも問題なさそうですが、
+    docker info が失敗します。次の出力を確認してください:
+
+      docker info
+      systemctl status docker"
 fi
 ok "Docker は使えます（$(docker --version | cut -d, -f1)）"
 
