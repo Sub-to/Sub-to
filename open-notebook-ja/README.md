@@ -286,6 +286,12 @@ Docker Compose が自動で読み込む `docker-compose.override.yml` を追加�
 | `ja-prompts/chat/system.jinja` | ノートブックでのチャットが日本語になる |
 | `ja-prompts/source_chat/system.jinja` | 個別ソースとの対話が日本語になる |
 | `ja-prompts/ask/final_answer.jinja` | Ask の最終回答が日本語になる |
+| `ja-prompts/transformation/execute.jinja` | **変換（要約など）の結果が日本語になる** |
+
+最後の 1 つが重要です。組み込みの変換（Summary、Key Concepts など）は
+**指示が英語で書かれている**ため、これが無いと要約結果が英語で返ってきます。
+上書きすると、英語の指示はそのまま使いつつ、出力言語だけ日本語に固定します。
+自分で日本語の変換を作った場合も、二重に効くだけで害はありません。
 
 中身は上流の原文をそのまま残し、先頭と末尾に日本語で出力するルールを足しただけです。
 上流を更新したときの差分確認が楽になるようにしています。
@@ -488,7 +494,8 @@ open-notebook-ja/
 ├── ja-prompts/                   # 日本語で回答させるプロンプト上書き
 │   ├── chat/system.jinja
 │   ├── source_chat/system.jinja
-│   └── ask/final_answer.jinja
+│   ├── ask/final_answer.jinja
+│   └── transformation/execute.jinja
 ├── setup-linux.sh                # Linux 用の導入スクリプト
 ├── setup-ollama.sh               # Ollama(GPU) を登録・テスト・既定設定まで自動化
 ├── linux/                        # Linux 用のランチャーとアイコン
@@ -580,7 +587,7 @@ docker compose pull
 docker compose up -d
 ```
 
-`ja-prompts/` の 3 ファイルは上流 v1.14.0 の原文をコピーして日本語指示を足したものです。
+`ja-prompts/` の 4 ファイルは上流 v1.14.0 の原文をコピーして日本語指示を足したものです。
 上流がこれらのプロンプトを更新した場合、上書き版は古いままになります。
 メジャー更新のあとは差分を確認して取り込んでください。
 
@@ -588,8 +595,8 @@ docker compose up -d
 プロンプト出力には現れません）が入っています。この間が上流の原文そのままです。
 
 ```bash
-# 3ファイルすべてを上流の最新版と比較する
-for f in chat/system source_chat/system ask/final_answer; do
+# 4ファイルすべてを上流の最新版と比較する
+for f in chat/system source_chat/system ask/final_answer transformation/execute; do
   echo "--- $f ---"
   diff <(curl -s "https://raw.githubusercontent.com/lfnovo/open-notebook/main/prompts/$f.jinja") \
        <(awk '/UPSTREAM-BEGIN/{n=1;next} /UPSTREAM-END/{n=0} n' "ja-prompts/$f.jinja")
